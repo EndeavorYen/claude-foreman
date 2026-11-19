@@ -165,5 +165,50 @@ class ForemanTest(unittest.TestCase):
         self.assertIn("自己做", out)
 
 
+    # ---- 0.4.0: from the go-mon run (2026-11-19) ----
+
+    def test_gate_logs_are_numbered_without_gaps_or_repeats(self):
+        self.start()
+        self.run_cli("gate", "U1", "--cmd", OK, "--cmd", OK, "--cmd", OK)
+        self.run_cli("gate", "U1", "--cmd", OK)
+        run = json.loads(next((self.repo / ".claude" / "foreman-runs").glob("*/run.json")).read_text(encoding="utf-8"))
+        names = [g["log"].split("-")[1] for g in run["units"][0]["gates"]]
+        self.assertEqual(names, ["1", "2", "3", "4"])
+
+    def test_several_dispatches_open_in_one_call_or_none(self):
+        self.start()
+        self.run_cli("plan", "add", "U2", "--objective", "o2", "--model", "haiku", "--verify", "gate", "--files", "lib")
+        code, out = self.run_cli("dispatch", "open", "U1", "U2")
+        self.assertEqual(code, 0, out)
+        self.assertIn("U1 dispatch #1 open", out)
+        self.assertIn("U2 dispatch #1 open (worker, haiku)", out)
+        # U1 is open now: opening U1 and U2 again is refused as a whole
+        self.run_cli("plan", "add", "U3", "--objective", "o3", "--model", "haiku", "--verify", "gate", "--files", "x")
+        code, _ = self.run_cli("dispatch", "open", "U3", "U1")
+        self.assertEqual(code, 2)
+        run = json.loads(next((self.repo / ".claude" / "foreman-runs").glob("*/run.json")).read_text(encoding="utf-8"))
+        self.assertEqual([u["dispatches"] for u in run["units"] if u["id"] == "U3"], [[]])
+
+    def test_worktree_from_baseline_shares_the_ledger_and_is_where_gates_run(self):
+        (self.repo / "node_modules").mkdir()
+        self.start()
+        code, out = self.run_cli("worktree", "U1")
+        self.assertEqual(code, 0, out)
+        wt = self.repo.parent / f"{self.repo.name}-u1"
+        try:
+            self.assertTrue((wt / ".git").exists())
+            self.assertTrue((wt / "node_modules").is_symlink())
+            # a gate for U1 runs in its worktree by default
+            code, out = self.run_cli("gate", "U1", "--cmd", f'"{sys.executable}" -c "import os; print(os.getcwd())"')
+            self.assertEqual(code, 0, out)
+            self.assertIn(str(wt.resolve()), out)
+            # called from inside the worktree, the tool finds the main checkout's ledger
+            p = subprocess.run([sys.executable, str(SCRIPT), "plan", "show"], cwd=wt, capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertIn("| U1 |", p.stdout)
+        finally:
+            subprocess.run(["git", "worktree", "remove", "--force", str(wt)], cwd=self.repo)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -48,9 +48,14 @@ def git(*args: str, cwd: Path) -> str:
 
 
 def repo_root(start: Path) -> Path:
+    """The main checkout. From inside a `git worktree` this is still the main checkout, so a worker's
+    worktree and the foreman share one ledger (no --repo needed when gating from a worktree)."""
     top = git("rev-parse", "--show-toplevel", cwd=start)
     if not top:
         die("not inside a git repository")
+    common = git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=start)
+    if common and Path(common).name == ".git" and Path(common).parent.resolve() != Path(top).resolve():
+        return Path(common).parent
     return Path(top)
 
 
@@ -158,24 +163,60 @@ def cmd_plan_show(a, root: Path) -> None:
 def cmd_dispatch_open(a, root: Path) -> None:
     run = current_run(root)
     data = load(run)
-    u = unit_of(data, a.unit)
-    if u["status"] in ("integrated", "surfaced"):
-        die(f"{a.unit} is {u['status']}: no more dispatches", 2)
-    for dep in u["depends"]:
-        if unit_of(data, dep)["status"] != "integrated":
-            die(f"{a.unit} depends on {dep}, which is not integrated yet", 2)
-    if a.role == "worker":
-        n = sum(1 for d in u["dispatches"] if d["role"] == "worker")
-        if n >= MAX_WORKER_DISPATCHES:
-            die(f"{a.unit} used {n}/{MAX_WORKER_DISPATCHES} worker dispatches: surface it, do not retry", 2)
-    if any(d["result"] == "open" for d in u["dispatches"]):
-        die(f"{a.unit} has an open dispatch: close it first", 2)
-    u["dispatches"].append({"n": len(u["dispatches"]) + 1, "role": a.role, "model": a.model or u["model"],
-                            "openedAt": now(), "result": "open", "tokens": None, "durationSec": None,
-                            "failKind": None})
-    u["status"] = "in-flight"
+    units = [unit_of(data, uid) for uid in a.unit]
+    # all or nothing: check every unit before opening any
+    for uid, u in zip(a.unit, units):
+        if u["status"] in ("integrated", "surfaced"):
+            die(f"{uid} is {u['status']}: no more dispatches", 2)
+        for dep in u["depends"]:
+            if unit_of(data, dep)["status"] != "integrated":
+                die(f"{uid} depends on {dep}, which is not integrated yet", 2)
+        if a.role == "worker":
+            n = sum(1 for d in u["dispatches"] if d["role"] == "worker")
+            if n >= MAX_WORKER_DISPATCHES:
+                die(f"{uid} used {n}/{MAX_WORKER_DISPATCHES} worker dispatches: surface it, do not retry", 2)
+        if any(d["result"] == "open" for d in u["dispatches"]):
+            die(f"{uid} has an open dispatch: close it first", 2)
+    for uid, u in zip(a.unit, units):
+        u["dispatches"].append({"n": len(u["dispatches"]) + 1, "role": a.role, "model": a.model or u["model"],
+                                "openedAt": now(), "result": "open", "tokens": None, "durationSec": None,
+                                "failKind": None})
+        u["status"] = "in-flight"
+        print(f"{uid} dispatch #{len(u['dispatches'])} open ({a.role}, {a.model or u['model']})")
     save(run, data)
-    print(f"{a.unit} dispatch #{len(u['dispatches'])} open ({a.role}, {a.model or u['model']})")
+
+
+DEP_DIRS = ("node_modules", ".venv", "venv")
+
+
+def cmd_worktree(a, root: Path) -> None:
+    """A worktree for one unit, from the run's baseline, with the dependency folders linked (not reinstalled)."""
+    run = current_run(root)
+    data = load(run)
+    u = unit_of(data, a.unit)
+    if u.get("worktree"):
+        die(f"{a.unit} already has a worktree: {u['worktree']}", 2)
+    path = Path(a.path).resolve() if a.path else root.parent / f"{root.name}-{a.unit.lower()}"
+    if path.exists():
+        die(f"{path} already exists", 2)
+    sha = data.get("baselineSha") or "HEAD"
+    try:
+        subprocess.run(["git", "worktree", "add", "-q", "--detach", str(path), sha], cwd=root, check=True,
+                       capture_output=True, text=True)
+    except (OSError, subprocess.CalledProcessError) as e:
+        die(f"git worktree add failed: {getattr(e, 'stderr', e)}")
+    linked = []
+    for name in DEP_DIRS:
+        src = root / name
+        if src.is_dir() and not (path / name).exists():
+            try:
+                (path / name).symlink_to(src, target_is_directory=True)
+                linked.append(name)
+            except OSError:
+                print(f"note: could not link {name}; install the dependencies in {path}", file=sys.stderr)
+    u["worktree"] = str(path)
+    save(run, data)
+    print(f"{a.unit} worktree {path} at {sha[:10]}" + (f" · linked {', '.join(linked)}" if linked else ""))
 
 
 def cmd_dispatch_close(a, root: Path) -> None:
@@ -302,13 +343,20 @@ def cmd_gate(a, root: Path) -> None:
     run = current_run(root)
     data = load(run)
     u = unit_of(data, a.unit) if a.unit != "ship" else None
-    cwd = Path(a.cwd).resolve() if a.cwd else root
+    if a.cwd:
+        cwd = Path(a.cwd).resolve()
+    elif u is not None and u.get("worktree") and u["status"] != "integrated":
+        cwd = Path(u["worktree"])
+        print(f"(in {a.unit}'s worktree {cwd})")
+    else:
+        cwd = root
+    base = len(u["gates"]) if u is not None else len(data.get("shipGates", []))
     worst = 0
     for i, cmd in enumerate(a.cmd, 1):
         t0 = time.time()
         p = subprocess.run(cmd, cwd=cwd, shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
         dur = round(time.time() - t0, 1)
-        log = run / "gates" / f"{a.unit}-{len(u['gates']) + i if u else i}-{int(t0)}.log"
+        log = run / "gates" / f"{a.unit}-{base + i}-{int(t0)}.log"
         log.write_text(f"$ {cmd}\n(cwd {cwd}, exit {p.returncode}, {dur}s)\n\n{p.stdout}\n{p.stderr}", encoding="utf-8")
         mark = "PASS" if p.returncode == 0 else "FAIL"
         print(f"{a.unit} gate {mark} exit {p.returncode} {dur}s · {cmd} · log {log.name}")
@@ -472,7 +520,7 @@ def main(argv: list[str] | None = None) -> None:
     s = sub.add_parser("dispatch", help="record a dispatch")
     ds = s.add_subparsers(dest="d_cmd", required=True)
     do = ds.add_parser("open")
-    do.add_argument("unit")
+    do.add_argument("unit", nargs="+", help="one or more units (open them all before sending the Agent calls)")
     do.add_argument("--role", default="worker", choices=ROLES)
     do.add_argument("--model", choices=MODELS)
     do.set_defaults(fn=cmd_dispatch_open)
@@ -484,6 +532,11 @@ def main(argv: list[str] | None = None) -> None:
     dc.add_argument("--duration", type=float, help="seconds")
     dc.add_argument("--model-reported", help="exact model ID the subagent says it ran on (verifiers; workers put it in the report)")
     dc.set_defaults(fn=cmd_dispatch_close)
+
+    s = sub.add_parser("worktree", help="a git worktree for one unit, from the baseline, dependencies linked")
+    s.add_argument("unit")
+    s.add_argument("--path", help="default: <repo>-<unit> next to the repository")
+    s.set_defaults(fn=cmd_worktree)
 
     s = sub.add_parser("report", help="check a worker report (file path or - for stdin)")
     s.add_argument("unit")

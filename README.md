@@ -55,6 +55,7 @@
 | 計畫寫了要驗證者，就不能跳過 | `unit set integrated` 檢查 |
 | 收尾前要跑過 repo 的完整檢查 | `finish` 檢查有沒有 `gate ship` |
 | 要知道子代理實際跑在哪個模型 | 回報必填 `model`；跟指定的不符時警告，成本行依實際模型分組 |
+| 單元要有自己的工作目錄 | `worktree U2` 從基準開、連好相依套件；`gate U2` 預設在那裡跑，在 worktree 裡也找得到同一本帳 |
 
 plugin 另外附三種精簡的子代理類型（`worker`、`verifier`、`scout`），只帶讀寫檔和 shell，用來壓低每次派遣的固定開銷。
 
