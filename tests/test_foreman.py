@@ -14,7 +14,7 @@ OK = OK.replace("python", f'"{sys.executable}"')
 
 def report(unit="U1", status="PASS", files=("src/a.ts",), criteria=None):
     return json.dumps({
-        "unit": unit, "status": status, "filesChanged": list(files),
+        "unit": unit, "model": "claude-sonnet-5-5", "status": status, "filesChanged": list(files),
         "criteria": criteria or [{"id": "C1", "status": "PASS", "evidence": "npm test: 12 passed",
                                   "run": True, "cmd": "npm test", "exit": 0}],
         "notDone": [], "unsure": [],
@@ -127,13 +127,23 @@ class ForemanTest(unittest.TestCase):
         self.run_cli("gate", "ship", "--cmd", OK)
         code, out = self.run_cli("finish")
         self.assertEqual(code, 0)
-        self.assertIn("sonnet ×1（30k tok", out)
+        self.assertIn("claude-sonnet-5-5 ×1（30k tok", out)
         hist = self.repo / ".claude" / "foreman-runs" / "history.jsonl"
         run_id = json.loads(hist.read_text(encoding="utf-8").splitlines()[0])["runId"]
         self.assertEqual(self.run_cli("feedback", run_id, "--issues", "1")[0], 0)
         code, out = self.run_cli("review")
         self.assertEqual(code, 0)
         self.assertIn("事後發現問題合計 1", out)
+
+    def test_model_mismatch_warns_and_missing_model_fails(self):
+        self.start()
+        self.run_cli("dispatch", "open", "U1")
+        code, out = self.run_cli("report", "U1", "-", stdin=report().replace("claude-sonnet-5-5", "claude-opus-5-5"))
+        self.assertEqual(code, 0)
+        self.assertIn("asked for sonnet", out)
+        no_model = json.loads(report())
+        del no_model["model"]
+        self.assertEqual(self.run_cli("report", "U1", "-", stdin=json.dumps(no_model))[0], 3)
 
     def test_solo_run_has_no_plan_and_finishes(self):
         self.run_cli("init", "--task", "t", "--mode", "solo", "--reason", "one unit, needs a design decision")

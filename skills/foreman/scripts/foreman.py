@@ -24,7 +24,7 @@ from pathlib import Path
 MODELS = ("haiku", "sonnet", "opus", "fable")
 ROLES = ("worker", "verifier")
 MAX_WORKER_DISPATCHES = 3
-REPORT_REQUIRED = ("unit", "status", "filesChanged", "criteria", "notDone", "unsure")
+REPORT_REQUIRED = ("unit", "model", "status", "filesChanged", "criteria", "notDone", "unsure")
 CRITERION_ID = re.compile(r"^C\d+$")
 
 
@@ -113,7 +113,7 @@ def cmd_init(a, root: Path) -> None:
     data = {
         "runId": run_id, "task": a.task, "mainModel": a.main_model, "mode": a.mode,
         "gateReason": a.reason, "baselineSha": git("rev-parse", "HEAD", cwd=root),
-        "startedAt": now(), "units": [], "finished": None,
+        "startedAt": now(), "units": [], "finished": None, "baseTokens": a.base_tokens,
     }
     save(run, data)
     pointer.write_text(run_id, encoding="utf-8")
@@ -194,11 +194,23 @@ def cmd_dispatch_close(a, root: Path) -> None:
     if a.result == "FAIL" and not a.fail_kind:
         die("a FAIL needs --fail-kind spec|environment|capability|unverifiable", 1)
     d.update(result=a.result, tokens=a.tokens, durationSec=a.duration, closedAt=now(), failKind=a.fail_kind)
+    if a.model_reported:
+        note_model(d, a.model_reported)
+    if not d.get("modelReported"):
+        print(f"note: {a.unit} dispatch #{d['n']} has no reported model (pass --model-reported)", file=sys.stderr)
     u["status"] = "passed" if a.result == "PASS" else "pending"
     if a.result == "FAIL" and a.fail_kind == "unverifiable":
         u["status"] = "surfaced"
     save(run, data)
     print(f"{a.unit} dispatch #{d['n']} {a.result}" + (f" ({a.fail_kind})" if a.fail_kind else ""))
+
+
+def note_model(d: dict, reported: str) -> None:
+    """Record the model the subagent says it ran on; shout when it is not the one that was asked for."""
+    d["modelReported"] = reported
+    if d["model"] not in reported.lower():
+        print(f"WARNING: asked for {d['model']} but the subagent reports `{reported}`: routing is being overridden "
+              f"(check CLAUDE_CODE_SUBAGENT_MODEL and the agent definition's model)", file=sys.stderr)
 
 
 def check_report(rep: dict, unit: dict) -> list[str]:
@@ -257,6 +269,8 @@ def cmd_report(a, root: Path) -> None:
                    "unsure": rep.get("unsure")}
     for g in u["gates"]:
         g["afterReport"] = False
+    if u["dispatches"] and isinstance(rep, dict) and rep.get("model"):
+        note_model(u["dispatches"][-1], str(rep["model"]))
     save(run, data)
     if errs:
         print(f"{a.unit} report FAIL:")
@@ -323,7 +337,7 @@ def summarise(data: dict) -> dict:
         retries += max(0, len(workers) - 1)
         for d in u["dispatches"]:
             disp += 1
-            m = per_model.setdefault(d["model"], {"dispatches": 0, "tokens": 0, "seconds": 0.0})
+            m = per_model.setdefault(d.get("modelReported") or d["model"] + "(未回報)", {"dispatches": 0, "tokens": 0, "seconds": 0.0})
             m["dispatches"] += 1
             m["tokens"] += d["tokens"] or 0
             m["seconds"] += d["durationSec"] or 0
@@ -341,9 +355,11 @@ def cost_line(data: dict) -> str:
     if data["mode"] == "solo":
         return f"foreman：自己做（{data['gateReason']}）"
     parts = [f"{m} ×{v['dispatches']}（{v['tokens'] / 1000:.0f}k tok, {v['seconds'] / 60:.0f} 分）"
-             for m, v in sorted(s["perModel"].items(), key=lambda kv: MODELS.index(kv[0]) if kv[0] in MODELS else 9)]
+             for m, v in sorted(s["perModel"].items())]
     total = sum(v["tokens"] for v in s["perModel"].values())
-    return (f"foreman：{data['mainModel']} 規劃＋驗收｜{'、'.join(parts) or '無派遣'}｜子代理合計 {total / 1000:.0f}k tok"
+    base = data.get("baseTokens")
+    overhead = f"（其中固定開銷約 {base * s['dispatches'] / 1000:.0f}k＝{base / 1000:.0f}k×{s['dispatches']} 次）" if base else ""
+    return (f"foreman：{data['mainModel']} 規劃＋驗收｜{'、'.join(parts) or '無派遣'}｜子代理合計 {total / 1000:.0f}k tok{overhead}"
             f"｜重派 {s['retries']}｜關卡 1 擋下 {s['gateFails']}｜驗證者抓到 {s['verifierCaught']}"
             f"｜交付 {s['units']['integrated']}、擱置 {s['units']['surfaced']}")
 
@@ -421,6 +437,7 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--mode", choices=("delegate", "solo"), required=True)
     s.add_argument("--reason", required=True, help="one line: why the gate chose this mode")
     s.add_argument("--main-model", default="opus", choices=MODELS)
+    s.add_argument("--base-tokens", type=int, help="tokens a do-nothing subagent costs here (from the probe)")
     s.add_argument("--force", action="store_true")
     s.set_defaults(fn=cmd_init)
 
@@ -451,6 +468,7 @@ def main(argv: list[str] | None = None) -> None:
     dc.add_argument("--fail-kind", choices=("spec", "environment", "capability", "unverifiable"))
     dc.add_argument("--tokens", type=int)
     dc.add_argument("--duration", type=float, help="seconds")
+    dc.add_argument("--model-reported", help="exact model ID the subagent says it ran on (verifiers; workers put it in the report)")
     dc.set_defaults(fn=cmd_dispatch_close)
 
     s = sub.add_parser("report", help="check a worker report (file path or - for stdin)")

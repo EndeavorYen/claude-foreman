@@ -54,6 +54,9 @@
 | 有依賴的單元要等前一個整合完 | `dispatch open` 檢查 |
 | 計畫寫了要驗證者，就不能跳過 | `unit set integrated` 檢查 |
 | 收尾前要跑過 repo 的完整檢查 | `finish` 檢查有沒有 `gate ship` |
+| 要知道子代理實際跑在哪個模型 | 回報必填 `model`；跟指定的不符時警告，成本行依實際模型分組 |
+
+plugin 另外附三種精簡的子代理類型（`worker`、`verifier`、`scout`），只帶讀寫檔和 shell，用來壓低每次派遣的固定開銷。
 
 紀錄放在各 repo 的 `.claude/foreman-runs/`（自動加進 `.git/info/exclude`，不會進版控）：
 

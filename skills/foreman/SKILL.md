@@ -97,7 +97,7 @@ Agent 的 prompt 就是整份交接說明。禁止 worker 自己再派子代理�
 ## 5. worker 回報
 
 ```json
-{"unit":"U1","status":"PASS|FAIL",
+{"unit":"U1","model":"claude-sonnet-5-5","status":"PASS|FAIL",
  "filesChanged":["src/core/bowls.ts","src/core/bowls.test.ts"],
  "criteria":[
    {"id":"C1","status":"PASS","evidence":"vitest: 14 passed (bowls.test.ts 6)","run":true,"cmd":"npx vitest run","exit":0},
@@ -147,13 +147,38 @@ Agent 的 prompt 就是整份交接說明。禁止 worker 自己再派子代理�
 搭配使用者的 colab-operator 和 colab-long-gpu-jobs skill。實驗設計、判讀結果、決定下一步、
 異常結果的根因分析留在你這裡。完成標準改成「產出檔存在且指標有值」這類可檢查的條件。
 
-## 10. 第一次在某個環境用
+## 10. 模型與成本：要量，不要猜
 
-先確認兩件事，確認不了就在最後回覆裡照實說：
+**每個環境第一次用，先探測一次**（之後把數字帶進 `init --base-tokens`）：派一個什麼都不做的 haiku 子代理，
+prompt 是「不要用工具，只回覆一行 JSON：{"model":"<環境資訊裡的確切模型 ID>"}」。它告訴你兩件事：
 
-- 子代理真的跑在指定的模型上：第一個派遣回來後看 Agent 工具回報的模型。
-  `CLAUDE_CODE_SUBAGENT_MODEL` 這類環境變數可能蓋掉你的指定。
-- 拿得到子代理的 token 用量。拿不到的話成本行只有派遣次數和時間，照實呈現。
+- **模型有沒有照你指定的跑。** 回報的 ID 要包含你指定的模型名稱。對不上就是被
+  `CLAUDE_CODE_SUBAGENT_MODEL`、`CLAUDE_CODE_SUBAGENT_MODEL_FORCE` 或 agent 定義檔蓋掉了：停下來告訴使用者，不要繼續派。
+- **固定開銷。** 這次派遣回傳的 token 數，就是這個環境裡「派一次」的起跳價（系統提示、工具清單）。
+  環境差很多：工具和 skill 裝得多的環境可能是 7 萬，乾淨的環境只有一兩萬。
+
+之後每一次派遣都要記下實際模型：worker 的回報有 `model` 欄位，`report` 會自動記；
+驗證者的用 `dispatch close --model-reported <ID>`。跟指定的不符時工具會警告。
+
+**token 數字的意義**：Agent 工具回傳的 token 數接近「子代理結束時的 context 大小」，不是每一輪的加總。
+實際計費是每一輪重讀 context 的總和（大部分是快取讀取）。要精確金額，看 Claude Code 存下來的對話紀錄裡
+每則訊息的 `model` 和 `usage`。成本行只列量得到的數字，不要換算成金額。
+
+**省成本的做法**，依效果排序：
+
+1. **少派幾次。** 每次派遣都付一次固定開銷，所以單元的工作量要明顯大於它。幾次工具呼叫做得完的小單元，
+   併進別的單元，或自己做。三個各改一個檔的小修，派一個 worker 一起做，不要派三個。
+2. **用精簡的 agent 類型。** 這個 plugin 附了 `claude-foreman:worker`、`claude-foreman:verifier`、
+   `claude-foreman:scout`，只帶讀寫檔和 shell，不帶 MCP 工具，固定開銷比通用型小。有裝 plugin 就用它們，
+   `model` 照樣每次明寫。
+3. **少幾輪。** 子代理每多一輪就重讀一次整個 context。交接說明直接給行號和必要的摘錄，
+   要求第一輪一次把檔案讀完、檢查指令改完再一起跑。
+4. **驗證者吃整理好的材料。** 先用一支小腳本把要驗的東西攤平成一個檔（例如每道配方的步驟和分碗結果），
+   驗證者讀一個檔就能判，不要讓它自己翻 repo。多個單元可以共用一次驗證。
+5. **規格寫對。** 一次規格錯誤的代價是一整次重派。動筆前先確認檔案真的在你以為的地方
+   （`grep` 一下），不要憑印象寫路徑和數量。
+6. **看主線的大小。** 你自己的 context 越大，你每一次工具呼叫越貴，派工越划算；
+   對話剛開始、context 還小的時候，小任務自己做比較便宜。
 
 ## 11. 給使用者的最後回覆
 

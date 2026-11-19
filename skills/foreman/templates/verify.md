@@ -27,7 +27,7 @@
 最後只輸出一個 JSON 區塊：
 
 ```json
-{"unit":"<單元編號>","verdict":"PASS|FAIL",
+{"unit":"<單元編號>","model":"<你的環境資訊裡寫的確切模型 ID>","verdict":"PASS|FAIL",
  "criteria":[{"id":"C1","verdict":"PASS|FAIL","evidence":"<證據>"}],
  "missing":["<規格漏掉的情況，和它會怎麼壞>"],
  "notes":"<60 字內>"}
