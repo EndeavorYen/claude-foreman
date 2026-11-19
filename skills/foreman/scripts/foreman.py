@@ -246,6 +246,26 @@ def cmd_dispatch_close(a, root: Path) -> None:
     print(f"{a.unit} dispatch #{d['n']} {a.result}" + (f" ({a.fail_kind})" if a.fail_kind else ""))
 
 
+def cmd_dispatch_amend(a, root: Path) -> None:
+    """Fill in a closed dispatch's tokens or time that arrived after it was closed. The result cannot be changed."""
+    run = current_run(root)
+    data = load(run)
+    u = unit_of(data, a.unit)
+    closed = [d for d in u["dispatches"] if d["result"] != "open"]
+    d = next((d for d in closed if d["n"] == a.n), None) if a.n else (closed[-1] if closed else None)
+    if d is None:
+        die(f"{a.unit} has no closed dispatch" + (f" #{a.n}" if a.n else ""))
+    if a.tokens is not None:
+        d["tokens"] = a.tokens
+    if a.duration is not None:
+        d["durationSec"] = a.duration
+    if a.model_reported:
+        note_model(d, a.model_reported)
+    d.setdefault("amended", []).append(now())
+    save(run, data)
+    print(f"{a.unit} dispatch #{d['n']} amended: tokens {d['tokens']}, {d['durationSec']}s")
+
+
 def note_model(d: dict, reported: str) -> None:
     """Record the model the subagent says it ran on; shout when it is not the one that was asked for."""
     d["modelReported"] = reported
@@ -532,6 +552,13 @@ def main(argv: list[str] | None = None) -> None:
     dc.add_argument("--duration", type=float, help="seconds")
     dc.add_argument("--model-reported", help="exact model ID the subagent says it ran on (verifiers; workers put it in the report)")
     dc.set_defaults(fn=cmd_dispatch_close)
+    dm = ds.add_parser("amend", help="fill in tokens/time that arrived after the dispatch was closed")
+    dm.add_argument("unit")
+    dm.add_argument("--n", type=int, help="dispatch number (default: the last closed one)")
+    dm.add_argument("--tokens", type=int)
+    dm.add_argument("--duration", type=float, help="seconds")
+    dm.add_argument("--model-reported")
+    dm.set_defaults(fn=cmd_dispatch_amend)
 
     s = sub.add_parser("worktree", help="a git worktree for one unit, from the baseline, dependencies linked")
     s.add_argument("unit")

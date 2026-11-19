@@ -77,7 +77,8 @@ foreman plan show
    不採信 worker 自己說的結果。回報之前跑的關卡不算數。
 6. **關卡 2：依風險。** 計畫寫 `gate+verifier` 的單元，派一個驗證者（第 6 節）。
 7. **結案這次派遣：** `foreman dispatch close U1 --result PASS|FAIL [--fail-kind …] --tokens <n> --duration <秒>`。
-   token 和時間取自 Agent 工具回傳的用量；拿不到就不填，不要估。
+   token 和時間取自 Agent 工具回傳的用量；拿不到就不填，不要估。子代理的回報（訊息）常比用量（完成通知）先到：
+   先 close，用量到了再 `foreman dispatch amend U1 --tokens <n> --duration <秒>` 補上，不要填 0。
 8. **整合**：把該單元的改動併進主線，再跑一次關卡，`foreman unit set U1 integrated`。一次整合一個。
 9. **出貨關卡**：全部整合後，跑 repo 自己規定的完整檢查：`foreman gate ship --cmd "…" --cmd "…"`。
    repo 規則裡不能用指令做的項目（截圖親眼看、真機確認）由你自己做，不派出去。
@@ -160,7 +161,9 @@ Agent 的 prompt 就是整份交接說明。禁止 worker 自己再派子代理�
   幾秒就好）。之後 `foreman gate U2` 預設就在那個 worktree 跑；在 worktree 裡呼叫 foreman 也會找到主線的同一本帳。
 - **整合 worktree 的單元**（worker 不 commit 時）：在 worktree 開分支、commit（作者照 repo 規則），
   回主線 `git merge`。不同單元改同一個檔案的不同地方，git 會自己合。合完照第 3 節第 8 步再跑一次關卡。
-  repo 要求「一版一個 commit」時，推之前 `git reset --soft <基準>` 再 commit 一次。
+  repo 要求「一版一個 commit」時，不要改寫歷史（`reset --soft`＋強制推送在有安全檢查的環境會被擋，
+  也會蓋掉別人可能已經拉過的分支）：從遠端的 main 開一個新分支，`git merge --squash <工作分支>`，
+  commit 一次，確認 `git diff <工作分支> HEAD` 是空的（和測過的完全一樣），再推到 main。工作分支原樣留著。
 - 唯讀的 worker（搜尋、盤點、驗證者）不受上限限制。
 
 ## 10. 長時間任務（Colab、訓練、sweep）

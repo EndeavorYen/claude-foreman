@@ -210,5 +210,16 @@ class ForemanTest(unittest.TestCase):
             subprocess.run(["git", "worktree", "remove", "--force", str(wt)], cwd=self.repo)
 
 
+    def test_amend_fills_in_usage_that_came_after_the_close(self):
+        self.start()
+        self.run_cli("dispatch", "open", "U1", "--role", "verifier", "--model", "haiku")
+        self.run_cli("dispatch", "close", "U1", "--result", "PASS")
+        code, out = self.run_cli("dispatch", "amend", "U1", "--tokens", "89433", "--duration", "136")
+        self.assertEqual(code, 0, out)
+        run = json.loads(next((self.repo / ".claude" / "foreman-runs").glob("*/run.json")).read_text(encoding="utf-8"))
+        d = run["units"][0]["dispatches"][0]
+        self.assertEqual((d["tokens"], d["durationSec"], d["result"]), (89433, 136.0, "PASS"))
+
+
 if __name__ == "__main__":
     unittest.main()
