@@ -145,6 +145,18 @@ class ForemanTest(unittest.TestCase):
         del no_model["model"]
         self.assertEqual(self.run_cli("report", "U1", "-", stdin=json.dumps(no_model))[0], 3)
 
+    def test_ask_keeps_the_dispatch_open_and_costs_no_retry(self):
+        self.start()
+        self.run_cli("dispatch", "open", "U1")
+        ask = json.dumps({"unit": "U1", "model": "claude-sonnet-5-5", "status": "ASK", "questions": ["which bowl?"],
+                          "filesChanged": [], "criteria": [], "notDone": [], "unsure": []})
+        code, out = self.run_cli("report", "U1", "-", stdin=ask)
+        self.assertEqual(code, 0)
+        self.assertIn("? which bowl?", out)
+        self.assertEqual(self.run_cli("dispatch", "open", "U1")[0], 2)  # still open: resume, do not re-dispatch
+        self.assertEqual(self.run_cli("report", "U1", "-", stdin=report())[0], 0)
+        self.assertEqual(self.run_cli("report", "U1", "-", stdin=ask.replace('["which bowl?"]', "[]"))[0], 3)
+
     def test_solo_run_has_no_plan_and_finishes(self):
         self.run_cli("init", "--task", "t", "--mode", "solo", "--reason", "one unit, needs a design decision")
         self.assertEqual(self.run_cli("plan", "add", "U1", "--objective", "o", "--model", "sonnet", "--verify", "gate")[0], 2)

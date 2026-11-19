@@ -222,8 +222,13 @@ def check_report(rep: dict, unit: dict) -> list[str]:
         return errs
     if rep["unit"] != unit["id"]:
         errs.append(f"report is for {rep['unit']}, not {unit['id']}")
+    if rep["status"] == "ASK":
+        # the worker stopped to ask: answer it and resume the same agent; nothing else is checked yet
+        if not rep.get("questions"):
+            errs.append("status ASK needs a non-empty `questions` list")
+        return errs
     if rep["status"] not in ("PASS", "FAIL"):
-        errs.append("status must be PASS or FAIL")
+        errs.append("status must be PASS, FAIL or ASK")
     if not isinstance(rep["criteria"], list) or not rep["criteria"]:
         errs.append("criteria must be a non-empty list")
         return errs
@@ -265,6 +270,15 @@ def cmd_report(a, root: Path) -> None:
     n = len(u["dispatches"])
     (run / "reports" / f"{a.unit}-{n}.json").write_text(json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8")
     verdict = "PASS" if not errs and rep["status"] == "PASS" else "FAIL"
+    if not errs and rep["status"] == "ASK":
+        u["dispatches"][-1].setdefault("questions", []).append(rep["questions"])
+        save(run, data)
+        print(f"{a.unit} ASK: the worker needs an answer before it can go on:")
+        for q in rep["questions"]:
+            print(f"  ? {q}")
+        print("answer from what the user decided and what the repo says, then resume the SAME agent "
+              "(SendMessage); if you cannot answer it yourself, ask the user. The dispatch stays open.")
+        return
     u["report"] = {"dispatch": n, "verdict": verdict, "errors": errs, "notDone": rep.get("notDone"),
                    "unsure": rep.get("unsure")}
     for g in u["gates"]:
