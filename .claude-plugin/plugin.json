@@ -1,0 +1,9 @@
+{
+  "name": "claude-foreman",
+  "version": "0.1.0",
+  "description": "多模型派工：強模型當工頭，把可切塊的工作派給較便宜的模型，親自驗收，並留下成本紀錄。",
+  "author": { "name": "EndeavorYen", "url": "https://github.com/EndeavorYen" },
+  "homepage": "https://github.com/EndeavorYen/claude-foreman",
+  "repository": "https://github.com/EndeavorYen/claude-foreman",
+  "keywords": ["orchestration", "subagents", "model-routing", "delegation", "verification"]
+}
