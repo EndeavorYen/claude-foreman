@@ -1,12 +1,8 @@
-## 多模型派工（claude-foreman）
+## claude-foreman
 
-- 開始多檔案、多步驟的實作，批次修改，或長時間的執行等待之前，先載入 `claude-foreman:foreman` skill 過判斷關卡。
-  單檔小修、快問快答、還在討論設計時不用。
-- 派子代理時一律明寫 `model`；搜尋和盤點用 haiku，規格明確的實作用 sonnet。
-- 這個 repo 的出貨檢查指令：`<例：npx tsc --noEmit>`、`<npm test>`、`<npx playwright test>`。
-- worker 不准動：`<例：package.json 的版本號、src/data/changelog.json>`；這些由主模型最後統一處理。
-
-<!-- 以下是給你自己的使用習慣，不是給模型的規則：
-  日常步驟緊密相連的工作，用較便宜的模型當主模型，搭配 /advisor 讓強模型只在決策點出場
-  （例：Sonnet 主做 + Opus advisor）。advisor 必須不弱於主模型；每次諮詢會重讀整份對話，
-  長對話在階段之間先 /compact。 -->
+- 預設自己做。只在這三種情況派子代理，並明寫 `model`：要讀或搜尋大量檔案（haiku）、長時間的執行和等待（haiku／sonnet）、
+  對話已經很長又有一批規格明確的工作（sonnet）。
+- 出貨前改到 `<例：src/data/ 的配方資料、存檔格式>` 時，用 `claude-foreman:verify` 做一次獨立驗證。
+- 這個 repo 的檢查指令：`<例：npx tsc --noEmit>`、`<npm test>`、`<npx playwright test>`。
+- 子代理不准動：`<例：package.json 的版本號、src/data/changelog.json>`；這些由主模型最後統一處理。
+- 一個段落做完（推上去了、功能完成）而對話已經很長時，用一句話建議交接後開新 session。

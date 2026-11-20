@@ -1,11 +1,13 @@
 {
   "name": "claude-foreman",
-  "owner": { "name": "EndeavorYen" },
+  "owner": {
+    "name": "EndeavorYen"
+  },
   "plugins": [
     {
       "name": "claude-foreman",
       "source": "./",
-      "description": "多模型派工：強模型當工頭，把可切塊的工作派給較便宜的模型，親自驗收，並留下成本紀錄。"
+      "description": "省成本工具組：子代理預設模型與狀態列、該換 session 時提醒、獨立驗證、交接、特殊情況才用的派工。"
     }
   ]
 }

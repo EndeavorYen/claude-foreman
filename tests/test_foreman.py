@@ -157,6 +157,16 @@ class ForemanTest(unittest.TestCase):
         self.assertEqual(self.run_cli("report", "U1", "-", stdin=report())[0], 0)
         self.assertEqual(self.run_cli("report", "U1", "-", stdin=ask.replace('["which bowl?"]', "[]"))[0], 3)
 
+    def test_verify_log_feedback_and_review(self):
+        code, out = self.run_cli("verify-log", "--what", "recipe bowls", "--model", "claude-haiku-5-5",
+                                 "--tokens", "111000", "--found", "3", "--fixed", "2", "--asked", "1")
+        self.assertEqual(code, 0)
+        vid = out.split()[1]
+        self.assertEqual(self.run_cli("feedback", vid, "--issues", "0")[0], 0)
+        code, out = self.run_cli("review")
+        self.assertEqual(code, 0)
+        self.assertIn("其中 1 次有抓到問題，共 3 個", out)
+
     def test_solo_run_has_no_plan_and_finishes(self):
         self.run_cli("init", "--task", "t", "--mode", "solo", "--reason", "one unit, needs a design decision")
         self.assertEqual(self.run_cli("plan", "add", "U1", "--objective", "o", "--model", "sonnet", "--verify", "gate")[0], 2)

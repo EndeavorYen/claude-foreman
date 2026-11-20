@@ -1,47 +1,43 @@
 ---
 name: foreman
 description: >-
-  多模型派工：強模型（Opus／Fable）當工頭，把可切塊的工作派給較便宜的模型（Sonnet／Haiku），
-  自己負責規劃和驗收。動手做多檔案、多步驟的實作，批次修改，大量閱讀搜尋，或長時間的執行等待
-  （訓練、sweep）之前使用；先過判斷關卡，寫不出兩個能各自驗證的單元就自己做。單檔小修、
-  快問快答、還在討論設計時不要用。Use before substantive multi-unit implementation work
-  to decide whether to delegate to cheaper subagent models, and to run the delegation with
-  evidence gates, a retry budget and a cost line.
+  派工給較便宜的模型。預設不要派：一般的多檔案實作，主模型自己做比較便宜。只在三種情況用：
+  (1) 要讀或搜尋大量檔案，結果會塞滿主線；(2) 長時間的執行和等待（訓練、sweep、Colab）；
+  (3) 這個對話已經很長，而接下來有一批規格明確、可以各自驗證的工作。使用者說「派出去做」「分工」時也用。
+  獨立驗證用 verify skill，不是這個。Delegate work to cheaper subagent models only when reading volume,
+  long waits or an already-large main context make it pay.
 ---
 
-# foreman：派工與驗收
+# foreman：派工
 
-你是工頭：拆工作、派給夠用的最便宜模型、**親自驗收**、整合。你的 token 最貴，留給規劃、判斷和驗收。
+你是工頭：把工作派給夠用的最便宜模型、**親自驗收**、整合。
+
+**預設是自己做。** 每派一次子代理都要付一筆固定開銷（子代理的系統提示和工具清單，視環境從一兩萬到七八萬 token），
+第一次實跑時這筆開銷佔了子代理總用量的 75%，四個實作單元由主模型自己做會更便宜。所以派工只在划算的時候做。
 
 本檔所在資料夾記為 `<skill>`。帳本工具是 `python <skill>/scripts/foreman.py`，下文簡寫成 `foreman`
-（Windows 用 `python` 或 `py`，macOS／Linux 用 `python3`）。它會**拒絕**違規的動作：
-exit 2＝被規則擋下，exit 3＝關卡或回報沒過。被擋下時照訊息補做，不要繞過。
+（Windows 用 `python` 或 `py`，macOS／Linux 用 `python3`）。
 
 **repo 自己的規則永遠優先**（CLAUDE.md、AGENTS.md、它指定的 skill）。本檔只管怎麼派工。
 
-## 1. 判斷關卡：先拆再判
+## 1. 該不該派
 
-不要用「感覺很大」決定。動手寫計畫表：
+符合下面任一種才派，並用一句話告訴使用者是哪一種：
 
-1. 把任務裡**需要判斷的部分**挑出來：設計取捨、找 bug 根因、還沒跟使用者定案的事。這些你自己做，
-   而且先做完。沒定案的設計先跟使用者定案。
-2. 剩下的工作，試著寫成單元。每個單元要有：一句目標、只能動哪些檔案、完成標準 C1…Cn，
-   而且**每條標準都說得出用哪個指令或哪個證據判定**。
-3. 判定：
-   - 寫得出 **2 個以上**這樣的單元，彼此不搶同一個檔案（或有明確先後）→ **派工**（`--mode delegate`）
-   - 寫不出來 → **自己做**（`--mode solo`），用一行說原因，然後照常工作
-   - 環境不能指定子代理的模型（Agent 工具沒有 `model` 參數）→ 自己做
+| 情況 | 派什麼 | 為什麼划算 |
+|---|---|---|
+| **大量閱讀或搜尋**：要讀幾十個檔、翻長 log、盤點整個 repo | 唯讀的 scout（`haiku`），只回報事實和位置 | 幾十個檔的內容不進主線，你只收結論 |
+| **長時間執行和等待**：訓練、sweep、Colab、很慢的建置 | 啟動、輪詢、整理 log（`haiku`／`sonnet`） | 你不用為了等待一直醒著重讀 context |
+| **主線已經很大**，又有一批規格明確的工作 | 實作 worker（`sonnet`） | 你每一次工具呼叫都在重讀整個對話，比一次派遣的固定開銷還貴 |
 
-參考訊號（不是門檻）：要讀超過十幾個檔案、同一種修改橫跨很多檔案、要等很久的執行、主線 context 會被塞滿，
-這些都偏向派工。只改一兩個檔案、十次以內工具呼叫做得完，偏向自己做。
+第三種還要過一關：把工作寫成單元，每個單元有一句目標、只能動哪些檔、完成標準 C1…Cn，而且每條標準都說得出
+用哪個指令或證據判定。寫不出這樣的單元，就自己做；對話太長的問題改用 handoff skill 換 session 解決。
 
-兩種結果都要開帳本，判斷才有紀錄可回顧：
+不派的情況：需要判斷的事（設計取捨、找根因、還沒跟使用者定案的事）永遠自己做；
+幾次工具呼叫做得完的事自己做；環境不能指定子代理模型時自己做。
 
-```
-foreman init --task "<一句話>" --mode delegate|solo --reason "<為什麼>" --main-model opus|fable
-```
-
-`solo` 的話到此為止，做完跑 `foreman finish`。
+**只派一兩個唯讀或等待型的子代理時，不需要開帳本**，照第 2、4、5 節派出去、讀回報就好。
+派多個會改檔的 worker 時才用第 3 節的完整流程。
 
 ## 2. 模型分層
 
@@ -56,7 +52,11 @@ foreman init --task "<一句話>" --mode delegate|solo --reason "<為什麼>" --
 
 調整：標準全部能用指令檢查 → 可降一層；錯了很難被發現 → 升一層；主模型是 Opus 時 T2 單元通常自己做。
 
-## 3. 流程
+## 3. 完整流程（多個會改檔的 worker）
+
+```
+foreman init --task "<一句話>" --mode delegate --reason "<哪一種情況>" --main-model opus|fable [--base-tokens <量到的固定開銷>]
+```
 
 ```
 foreman plan add U1 --objective "…" --model sonnet --effort medium --verify gate --files src/core
@@ -109,16 +109,13 @@ Agent 的 prompt 就是整份交接說明。禁止 worker 自己再派子代理�
 鐵則：**寫了不等於跑了。** `[run]` 標準要有實際執行的指令和 exit 0 才能 PASS；環境跑不起來就寫 `PENDING`。
 `notDone` 和 `unsure` 一定要讀：便宜模型最常在這裡老實說出問題。
 
-## 6. 驗證
+## 6. 驗收
 
 - **關卡 1（一定做，你做）**：重跑檢查指令。便宜、決定性、永遠先做。
-- **關卡 2（依風險，派驗證者）**：以下才派，其他跳過：
-  - 有標準沒辦法用指令判定（文案適不適合、資料合不合理、有沒有漏掉情況）
-  - 牽涉存檔、資料遺失、金額、權限
-  - 你在回報的 `unsure` 或 diff 裡看到疑點，但不想自己花 context 細讀
-- 驗證者比實作者低一層，最低 Haiku；涉及正確性或安全的至少 Sonnet。照 `<skill>/templates/verify.md` 派：
-  給它 diff 範圍和完成標準，要它**逐條附證據**判 PASS／FAIL，並列出規格漏掉的情況。沒有證據的 PASS 當 FAIL。
-  `foreman dispatch open U1 --role verifier --model haiku`，判完 `dispatch close`。
+- **獨立驗證（依風險）**：改了資料、牽涉存檔或金額、或有指令判不出來的標準時，用同一個 plugin 的 **verify skill**
+  派驗證者。計畫裡寫 `gate+verifier` 的單元，要有驗證者 PASS 才能整合：
+  `foreman dispatch open U1 --role verifier --model haiku`，判完 `dispatch close --model-reported <ID>`。
+- 畫面好不好看、真機上能不能用，指令和驗證者都看不出來：你自己截圖看，或請使用者試。
 
 ## 7. 失敗分類與重試
 
@@ -161,8 +158,8 @@ Agent 的 prompt 就是整份交接說明。禁止 worker 自己再派子代理�
 
 ## 11. 模型與成本：要量，不要猜
 
-**每個環境第一次用，先探測一次**（之後把數字帶進 `init --base-tokens`）：派一個什麼都不做的 haiku 子代理，
-prompt 是「不要用工具，只回覆一行 JSON：{"model":"<環境資訊裡的確切模型 ID>"}」。它告訴你兩件事：
+**每個環境第一次用，先跑同一個 plugin 的 setup skill**：它會派一個什麼都不做的 haiku 子代理，量出兩件事
+（數字之後帶進 `init --base-tokens`）：
 
 - **模型有沒有照你指定的跑。** 回報的 ID 要包含你指定的模型名稱。對不上就是被
   `CLAUDE_CODE_SUBAGENT_MODEL`、`CLAUDE_CODE_SUBAGENT_MODEL_FORCE` 或 agent 定義檔蓋掉了：停下來告訴使用者，不要繼續派。

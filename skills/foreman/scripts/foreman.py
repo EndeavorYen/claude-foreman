@@ -403,8 +403,22 @@ def cmd_finish(a, root: Path) -> None:
     print(f"logged to {hist}; afterwards record what the user found: `feedback {data['runId']} --issues <n>`")
 
 
+def cmd_verify_log(a, root: Path) -> None:
+    """One line per independent verification, with or without a run: was the verifier worth its tokens?"""
+    rd = runs_dir(root)
+    rd.mkdir(parents=True, exist_ok=True)
+    exclude_runs(root)
+    entry = {"runId": "v-" + datetime.now().strftime("%Y%m%d-%H%M%S"), "what": a.what, "model": a.model,
+             "tokens": a.tokens, "found": a.found, "fixed": a.fixed, "asked": a.asked, "at": now(),
+             "issuesFoundLater": None}
+    with (rd / "verify.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    print(f"verify {entry['runId']} · {a.model} 抓到 {a.found}（修 {a.fixed}、問使用者 {a.asked}）"
+          + (f"，{a.tokens / 1000:.0f}k tok" if a.tokens else ""))
+
+
 def cmd_feedback(a, root: Path) -> None:
-    hist = runs_dir(root) / "history.jsonl"
+    hist = runs_dir(root) / ("verify.jsonl" if a.run.startswith("v-") else "history.jsonl")
     if not hist.is_file():
         die("no history yet")
     lines = hist.read_text(encoding="utf-8").splitlines()
@@ -424,8 +438,20 @@ def cmd_feedback(a, root: Path) -> None:
 
 
 def cmd_review(a, root: Path) -> None:
+    vf = runs_dir(root) / "verify.jsonl"
+    if vf.is_file():
+        vrows = [json.loads(l) for l in vf.read_text(encoding="utf-8").splitlines() if l.strip()]
+        print("| 驗證 | 驗什麼 | 模型 | tok | 抓到 | 事後發現 |")
+        print("|---|---|---|---|---|---|")
+        for e in vrows:
+            later = "?" if e.get("issuesFoundLater") is None else e["issuesFoundLater"]
+            print(f"| {e['runId']} | {e['what'][:30]} | {e['model']} | {(e['tokens'] or 0) / 1000:.0f}k | {e['found']} | {later} |")
+        hits = sum(1 for e in vrows if e["found"])
+        print(f"\n驗證 {len(vrows)} 次，其中 {hits} 次有抓到問題，共 {sum(e['found'] for e in vrows)} 個。\n")
     hist = runs_dir(root) / "history.jsonl"
     if not hist.is_file():
+        if vf.is_file():
+            return
         die("no history yet")
     rows = [json.loads(l) for l in hist.read_text(encoding="utf-8").splitlines() if l.strip()]
     print("| run | 任務 | 模式 | 派遣 | 重派 | 關卡擋下 | 驗證抓到 | 事後發現 |")
@@ -514,6 +540,14 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--issues", type=int, required=True)
     s.add_argument("--note")
     s.set_defaults(fn=cmd_feedback)
+    s = sub.add_parser("verify-log", help="record one independent verification")
+    s.add_argument("--what", required=True)
+    s.add_argument("--model", required=True, help="exact model ID the verifier reported")
+    s.add_argument("--tokens", type=int)
+    s.add_argument("--found", type=int, required=True, help="real problems it found")
+    s.add_argument("--fixed", type=int, default=0)
+    s.add_argument("--asked", type=int, default=0, help="left for the user to decide")
+    s.set_defaults(fn=cmd_verify_log)
     s = sub.add_parser("review", help="table of past runs")
     s.set_defaults(fn=cmd_review)
 
