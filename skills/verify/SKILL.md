@@ -36,7 +36,7 @@ description: >-
 ### 3. 派驗證者
 
 - 模型：比實作者低一層，最低 `haiku`；牽涉資料遺失、金額、權限的至少 `sonnet`。**`model` 一定要明寫。**
-- 類型：有裝這個 plugin 就用 `claude-foreman:verifier`（只讀、固定開銷小）。
+- 類型：有裝這個 plugin 就用 `foreman:verifier`（只讀、固定開銷小）。
 - prompt 照 `<skill>/verify-prompt.md` 填。材料在檔案裡就要求「用一次 Read 讀完，不做別的工具呼叫」；
   材料寫在 prompt 裡就要求「不要使用任何工具」。
 

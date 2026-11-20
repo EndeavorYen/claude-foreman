@@ -1,6 +1,6 @@
 {
-  "name": "claude-foreman",
-  "version": "0.4.0",
+  "name": "foreman",
+  "version": "0.4.1",
   "description": "省成本工具組：子代理預設模型與狀態列、該換 session 時提醒、獨立驗證、交接、特殊情況才用的派工。",
   "author": {
     "name": "EndeavorYen",

@@ -8,7 +8,7 @@ Decides in code, speaks only when one of two things is true, and says each thing
 On SessionStart it points Claude at a handoff file if one is waiting.
 
 Always exits 0: a reminder must never block a prompt.
-Tunables (environment): FOREMAN_IDLE_MIN=60  FOREMAN_IDLE_TOKENS=100000  FOREMAN_BIG_TOKENS=500000  FOREMAN_REMIND=0 to silence.
+Tunables (environment): FOREMAN_IDLE_MIN=60  FOREMAN_IDLE_TOKENS=100000  FOREMAN_BIG_TOKENS=500000  FOREMAN_REMIND=0 to silence.  FOREMAN_DEBUG_DUMP=<file> logs the payloads.
 """
 import json
 import os
@@ -121,6 +121,10 @@ def main() -> None:
         return
     try:
         data = json.load(sys.stdin)
+        dump = os.environ.get("FOREMAN_DEBUG_DUMP")  # troubleshooting: append every payload the hook receives
+        if dump:
+            with open(dump, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(data, ensure_ascii=False) + "\n")
         event = data.get("hook_event_name")
         out = session_start(data) if event == "SessionStart" else stop(data) if event == "Stop" else prompt_submit(data)
         if out:

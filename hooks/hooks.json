@@ -1,5 +1,5 @@
 {
-  "description": "claude-foreman：context 很大且快取過期、或 context 超過門檻時提醒使用者交接；新 session 指向交接檔",
+  "description": "foreman：context 很大且快取過期、或 context 超過門檻時提醒使用者交接；新 session 指向交接檔",
   "hooks": {
     "UserPromptSubmit": [
       {

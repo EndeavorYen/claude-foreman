@@ -43,7 +43,7 @@ plugin 的根目錄記為 `<plugin>`（本檔在 `<plugin>/skills/setup/`）。
 派子代理的起跳價每個環境差很多，量了才知道派工在這台電腦划不划算。在同一則訊息裡派兩個探測：
 
 - A：`subagent_type` 用通用型（`general-purpose`），`model: "haiku"`
-- B：`subagent_type` 用 `claude-foreman:verifier`，`model: "haiku"`
+- B：`subagent_type` 用 `foreman:verifier`，`model: "haiku"`
 
 兩個的 prompt 都是：
 

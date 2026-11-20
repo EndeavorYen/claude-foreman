@@ -177,8 +177,8 @@ Agent 的 prompt 就是整份交接說明。禁止 worker 自己再派子代理�
 
 1. **少派幾次。** 每次派遣都付一次固定開銷，所以單元的工作量要明顯大於它。幾次工具呼叫做得完的小單元，
    併進別的單元，或自己做。三個各改一個檔的小修，派一個 worker 一起做，不要派三個。
-2. **用精簡的 agent 類型。** 這個 plugin 附了 `claude-foreman:worker`、`claude-foreman:verifier`、
-   `claude-foreman:scout`，只帶讀寫檔和 shell，不帶 MCP 工具，固定開銷比通用型小。有裝 plugin 就用它們，
+2. **用精簡的 agent 類型。** 這個 plugin 附了 `foreman:worker`、`foreman:verifier`、
+   `foreman:scout`，只帶讀寫檔和 shell，不帶 MCP 工具，固定開銷比通用型小。有裝 plugin 就用它們，
    `model` 照樣每次明寫。
 3. **少幾輪。** 子代理每多一輪就重讀一次整個 context。交接說明直接給行號和必要的摘錄，
    要求第一輪一次把檔案讀完、檢查指令改完再一起跑。

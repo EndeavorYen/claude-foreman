@@ -1,13 +1,16 @@
 {
-  "name": "claude-foreman",
+  "name": "endeavoryen",
   "owner": {
     "name": "EndeavorYen"
   },
   "plugins": [
     {
-      "name": "claude-foreman",
+      "name": "foreman",
       "source": "./",
       "description": "省成本工具組：子代理預設模型與狀態列、該換 session 時提醒、獨立驗證、交接、特殊情況才用的派工。"
     }
-  ]
+  ],
+  "metadata": {
+    "description": "EndeavorYen 的 Claude Code plugin"
+  }
 }

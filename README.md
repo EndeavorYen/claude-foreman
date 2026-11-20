@@ -14,10 +14,10 @@
 
 ```
 /plugin marketplace add EndeavorYen/claude-foreman
-/plugin install claude-foreman@claude-foreman
+/plugin install foreman@endeavoryen
 ```
 
-裝好後在 Claude Code 裡說「設定 foreman」（或 `/claude-foreman:setup`），它會帶你做三件事：
+裝好後在 Claude Code 裡說「設定 foreman」（或 `/foreman:setup`），它會帶你做三件事：
 設定子代理的預設模型、裝狀態列、量這台電腦派一次子代理的固定開銷。
 
 需要 Python 3.9 以上（只用標準庫），Windows、macOS、Linux 都能跑。
@@ -90,7 +90,10 @@ python skills/foreman/scripts/foreman.py feedback <編號> --issues 1   # 回填
 - 派遣回傳的 token 數是子代理結束時的 context 大小，不是計費金額。成本行只列量得到的數字。
 - 精簡子代理類型能把固定開銷降多少，每個環境不同，用 setup 量。
 - 提醒的閒置時間以「Claude 上一次回完話」起算。快取實際的時效依方案而定，60 分鐘是保守的預設值。
-- hook 和狀態列是照 Claude Code 文件寫的，腳本本身有測試，但還沒在實際的 Claude Code 裡跑過。
+- 已在 Claude Code 2.1.329 實測：plugin 通過 `claude plugin validate`、四個 skill 和三種子代理類型都有載入、
+  新 session 的交接提示和閒置提醒都會觸發並顯示。還沒實測：狀態列實際收到的資料（照文件寫的）、
+  Windows 上的 hook 指令、精簡子代理的固定開銷。
+- plugin 名稱是 `foreman`（Claude Code 不允許第三方 plugin 用 `claude-` 開頭），repo 名稱維持 `claude-foreman`。
 - 「便宜模型主做、強模型當顧問」是 Claude Code 內建的 `/advisor`，不在這個 plugin 的範圍。
 
 ## 開發
